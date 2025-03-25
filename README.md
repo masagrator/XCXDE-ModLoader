@@ -1,5 +1,5 @@
-# XCXDE Mod Loader
-Exlaunch plugin that allows loading files outside of sts.ard/sts.arh
+# Xenoblade Chronicles X: Definitive Edition Mod Loader
+Exlaunch plugin that allows loading files outside of sts.ard/sts.arh.
 
 # How to install:
 1. Download latest release
@@ -18,4 +18,5 @@ atmosphere/contents/0100453019AA8000/romfs/mod/monolib/shader/lib_nx.ini
 ```
 
 # Technical details:
-This plugin is hooking only one function that is responsible for getting ready to load file. I am checking with wrapper around `fopen` if file exists, if yes I am replacing path in that hooked function so it can't find its hash and tries to load it outside of ard.
+It's hooking only one function that is responsible for preparing struct with info about file. I am checking with `fopen` wrapper called `nn::codec::FDKfopen` if file exists, if yes I am replacing path in that hooked function so it can't find its hash and tries to load it outside of ard.
+There is no cache implemented at all. I can accept PR that will create small and fast cache for mod folder.
