@@ -7,7 +7,7 @@
 
 namespace nn { namespace codec {
 	void* FDKfopen(const char * sNazwaPliku, const char * sTryb ) WEAK;
-	size_t FDKfclose(void * stream) WEAK;
+	int FDKfclose(void * stream) WEAK;
 }}
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
@@ -45,16 +45,11 @@ namespace nn::fs {
     Result SetResultHandledByApplication(bool enable);
 };
 
-/* Define hook StubCopyright. Trampoline indicates the original function should be kept. */
-/* HOOK_DEFINE_REPLACE can be used if the original function does not need to be kept. */
-
 extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
 	nn::fs::SetResultHandledByApplication(true);
 	exl::hook::Initialize();
 	CreateFileStruct::InstallAtOffset(0x13C5710);
-
-	/* Install the hook at the provided function pointer. Function type is checked against the callback function. */
 }
 
 extern "C" NORETURN void exl_exception_entry() {
