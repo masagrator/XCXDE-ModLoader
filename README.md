@@ -5,6 +5,8 @@ Exlaunch plugin that allows loading files outside of sts.ard/sts.arh.
 1. Download latest release
 2. Copy `atmosphere` folder to root of your sdcard
 
+For emulators read guide specific to your emulator about how to install mods.
+
 # How to use:
 Copy your files in the same folder tree to
 ```
