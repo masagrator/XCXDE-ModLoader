@@ -15,7 +15,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     static void Callback(void* x0, char** path) {
 		char file_path[512] = "rom:/mod";
 		if (path[0][0] != '/')
-			strcat(file_path, "/");
+			file_path[8] = '/';
 		strncat(file_path, path[0], 503);
 		void* file = nn::codec::FDKfopen(file_path, "rb");
 		if (!file)
@@ -24,7 +24,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			nn::codec::FDKfclose(file);
 			char new_path[512] = "/mod";
 			if (path[0][0] != '/')
-				strcat(new_path, "/");
+				new_path[4] = '/';
 			strncat(new_path, path[0], 506);
 			char* old_path = path[0];
 			path[0] = &new_path[0];
