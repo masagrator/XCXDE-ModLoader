@@ -1,5 +1,5 @@
 # Xenoblade Chronicles X: Definitive Edition Mod Loader
-Exlaunch plugin that allows loading files outside of sts.ard/sts.arh.
+Exlaunch plugin that allows loading files outside of sts.ard/sts.arh.<br>
 Only for version Western release, version 1.0.1 (TID: `0100453019AA8000`)
 
 # How to install:
