@@ -1,9 +1,18 @@
-# exlaunch
-A framework for injecting C/C++ code into Nintendo Switch applications/applet/sysmodules.
+# XCXDE Mod Loader
+Exlaunch plugin that allows loading files outside of sts.ard/sts.arh
 
-# Note
-This project is a work in progress. If you have issues, reach out to Shadów#1337 on Discord.
+# How to install:
+1. Download latest release
+2. Copy `atmosphere` folder to root of your sdcard
 
-# Credit
-- Atmosphère: A great reference and guide.
-- oss-rtld: Included for (pending) interop with rtld in applications (License [here](https://github.com/shadowninja108/exlaunch/blob/main/source/lib/reloc/rtld/LICENSE.txt)).
+# How to use:
+Copy your files in the same folder tree to
+```
+atmosphere/contents/0100453019AA8000/romfs/mod/
+```
+If any folder doesn't exist, create it manually.
+
+So for example if you modified "lib_nx.ini" that is in "monolib/shader", whole path should look like this:
+```
+atmosphere/contents/0100453019AA8000/romfs/mod/monolib/shader/lib_nx.ini
+```
