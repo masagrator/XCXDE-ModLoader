@@ -7,7 +7,7 @@
 
 namespace nn { namespace codec {
 	void* FDKfopen(const char * sNazwaPliku, const char * sTryb ) WEAK;
-	size_t FDKfclose(void * stream) WEAK;
+	void FDKfclose(void * stream) WEAK;
 }}
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
