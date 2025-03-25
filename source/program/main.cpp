@@ -22,15 +22,13 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			return Orig(x0, path);
 		else {
 			nn::codec::FDKfclose(file);
-			char* new_path = new char[512]();
-			strcpy(new_path, "/mod");
+			char new_path[512] = "/mod";
 			if (path[0][0] != '/')
 				strcat(new_path, "/");
 			strncat(new_path, path[0], 506);
 			char* old_path = path[0];
 			path[0] = &new_path[0];
 			Orig(x0, path);
-			delete[] new_path;
 			path[0] = old_path;
 			return;
 		}
