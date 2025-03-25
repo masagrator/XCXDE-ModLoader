@@ -10,21 +10,27 @@ namespace nn { namespace codec {
 	size_t FDKfclose(void * stream) WEAK;
 }}
 
-char new_file_path[512] = "";
+HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
-HOOK_DEFINE_TRAMPOLINE(CheckFile) {
-
-    static bool Callback(void* x0, int* x1, const char* path, int w3, int w4) {
+    static void Callback(void* x0, char** path) {
 		char file_path[512] = "rom:/mod";
-		strncat(file_path, path, 503);
+		if (path[0][0] != '/')
+			strcat(file_path, "/");
+		strncat(file_path, path[0], 503);
 		void* file = nn::codec::FDKfopen(file_path, "rb");
 		if (!file)
-			return Orig(x0, x1, path, w3, w4);
+			return Orig(x0, path);
 		else {
 			nn::codec::FDKfclose(file);
-			strncpy(new_file_path, "/mod", 5);
-			strncat(new_file_path, path, 507);
-			return Orig(x0, x1, new_file_path, w3, w4);
+			char* new_path = new char[512]();
+			strcpy(new_path, "/mod");
+			if (path[0][0] != '/')
+				strcat(new_path, "/");
+			strncat(new_path, path[0], 506);
+			path[0] = &new_path[0];
+			Orig(x0, path);
+			delete[] new_path;
+			return;
 		}
     }
 };
@@ -44,7 +50,7 @@ extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
 	nn::fs::SetResultHandledByApplication(true);
 	exl::hook::Initialize();
-	CheckFile::InstallAtOffset(0x13C90D4);
+	CreateFileStruct::InstallAtOffset(0x13C5710);
 
 	/* Install the hook at the provided function pointer. Function type is checked against the callback function. */
 }
