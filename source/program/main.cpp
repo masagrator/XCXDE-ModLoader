@@ -107,14 +107,14 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 		}
 		bool found = false;
 		if (final_file_count) {
-			static XXH64_state_t* state = 0;
-			if (!state) state = XXH64_createState();
+			XXH64_state_t* state = XXH64_createState();
 			XXH64_reset(state, 0);
 			if (path[0][0] != '/') {
 				XXH64_update(state, "/", 1);
 			}
 			XXH64_update(state, path[0], strlen(path[0]));
 			XXH64_hash_t hashCmp = XXH64_digest(state);
+			XXH64_freeState(state);
 			found = std::binary_search(&hashes[0], &hashes[final_file_count], hashCmp);
 		}
 		if (!found) return Orig(x0, path);
