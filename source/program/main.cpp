@@ -93,6 +93,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 		static bool initialized = false;
 		static u64 final_file_count = 0;
 		if (!initialized) {
+			initialized = true;
 			u64 file_count = 0;
 			Result res = countFiles(&file_count, file_path);
 			if (R_SUCCEEDED(res) && file_count) {
@@ -103,7 +104,6 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 				}
 				else nnutilZlib_zcfree(nullptr, hashes);
 			}
-			initialized = true;
 		}
 		bool found = false;
 		if (final_file_count) {
