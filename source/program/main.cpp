@@ -50,13 +50,9 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	R_TRY(nn::fs::OpenDirectory(&rootHandle, path.c_str(), nn::fs::OpenDirectoryMode_Directory));
 	s64 dir_count = 0;
 	r = nn::fs::GetDirectoryEntryCount(&dir_count, rootHandle);
-	if (R_FAILED(r)) {
+	if (R_FAILED(r) || !dir_count) {
 		nn::fs::CloseDirectory(rootHandle);
 		return r;
-	}
-	if (!dir_count) {
-		nn::fs::CloseDirectory(rootHandle);
-		return 0;
 	}
 	nn::fs::DirectoryEntry* entryBuffer = new nn::fs::DirectoryEntry[dir_count];
 	r = nn::fs::ReadDirectory(&dir_count, entryBuffer, rootHandle, dir_count);
