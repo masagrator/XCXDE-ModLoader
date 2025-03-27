@@ -27,18 +27,23 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	s64 file_count = 0;
 	Result r = nn::fs::GetDirectoryEntryCount(&file_count, rootHandle);
 	if (R_FAILED(r)) {
+		nn::fs::CloseDirectory(rootHandle);
 		return r;
 	}
 	if (file_count && hashes) {
 		nn::fs::DirectoryEntry* entryBuffer = new nn::fs::DirectoryEntry[file_count];
 		r = nn::fs::ReadDirectory(&file_count, entryBuffer, rootHandle, file_count);
-		if (R_FAILED(r)) return r;
+		if (R_FAILED(r)) {
+			delete[] entryBuffer;
+			return r;
+		}
 		for (s64 i = 0; i < file_count; i++) {
 			std::string final_path = path;
 			final_path += entryBuffer[i].m_Name;
 			final_path = final_path.erase(0, strlen("rom:/mod"));
 			hashes[*count++] = XXH64(final_path.c_str(), final_path.length(), 0);
 		}
+		delete[] entryBuffer;
 	}
 	else *count += file_count;
 	nn::fs::CloseDirectory(rootHandle);
@@ -56,10 +61,7 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	nn::fs::DirectoryEntry* entryBuffer = new nn::fs::DirectoryEntry[dir_count];
 	r = nn::fs::ReadDirectory(&dir_count, entryBuffer, rootHandle, dir_count);
 	nn::fs::CloseDirectory(rootHandle);
-	if (R_FAILED(r)) {
-		delete[] entryBuffer;
-		return r;
-	}
+	if (R_FAILED(r)) dir_count = 0;
 	else for (s64 i = 0; i < dir_count; i++) {
 		std::string next_path = path;
 		next_path += entryBuffer[i].m_Name;
@@ -105,6 +107,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 					std::sort(&hashes[0], &hashes[file_count]);
 					final_file_count = file_count;
 				}
+				else nnutilZlib_zcfree(nullptr, hashes);
 			}
 			initialized = true;
 		}
@@ -121,9 +124,9 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			found = std::binary_search(&hashes[0], &hashes[final_file_count], hashCmp);
 		}
 		if (!found) return Orig(x0, path);
-		char new_path[512] = "/mod";
-		if (path[0][0] != '/')
-			new_path[4] = '/';
+		char new_path[512] = "/mod/";
+		if (path[0][0] == '/')
+			new_path[4] = 0;
 		strncat(new_path, path[0], 506);
 		char* old_path = path[0];
 		path[0] = &new_path[0];
