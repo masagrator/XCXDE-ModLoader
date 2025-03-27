@@ -77,17 +77,15 @@ Result countFiles(u64* out, const char* path) {
 	u64 file_count = 0;
 	std::string str_path = path;
 	Result r = countFilesRecursive(&file_count, str_path, nullptr);
-	if (R_FAILED(r)) return r;
-	*out = file_count;
-	return 0;
+	if (R_SUCCEEDED(r))
+		*out = file_count;
+	return r;
 }
 
 Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 	u64 file_count = 0;
 	std::string str_path = path;
-	Result r = countFilesRecursive(&file_count, str_path, hashes);
-	if (R_FAILED(r)) return r;
-	return 0;
+	return countFilesRecursive(&file_count, str_path, hashes);
 }
 
 XXH64_hash_t* hashes = 0;
