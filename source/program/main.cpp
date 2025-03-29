@@ -31,19 +31,20 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 		return r;
 	}
 	if (file_count && hashes) {
-		nn::fs::DirectoryEntry* entryBuffer = new nn::fs::DirectoryEntry[file_count];
+		nn::fs::DirectoryEntry* entryBuffer = (nn::fs::DirectoryEntry*)nnutilZlib_zcalloc(nullptr, sizeof(nn::fs::DirectoryEntry), file_count);
 		r = nn::fs::ReadDirectory(&file_count, entryBuffer, rootHandle, file_count);
 		if (R_FAILED(r)) {
-			delete[] entryBuffer;
+			nnutilZlib_zcfree(nullptr, entryBuffer);
 			return r;
 		}
 		for (s64 i = 0; i < file_count; i++) {
 			std::string final_path = path;
 			final_path += entryBuffer[i].m_Name;
 			final_path = final_path.erase(0, strlen("rom:/mod"));
-			hashes[*count++] = XXH64(final_path.c_str(), final_path.length(), 0);
+			hashes[*count] = XXH64(final_path.c_str(), final_path.length(), 0);
+			*count += 1;
 		}
-		delete[] entryBuffer;
+		nnutilZlib_zcfree(nullptr, entryBuffer);
 	}
 	else *count += file_count;
 	nn::fs::CloseDirectory(rootHandle);
@@ -54,7 +55,7 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 		nn::fs::CloseDirectory(rootHandle);
 		return r;
 	}
-	nn::fs::DirectoryEntry* entryBuffer = new nn::fs::DirectoryEntry[dir_count];
+	nn::fs::DirectoryEntry* entryBuffer = (nn::fs::DirectoryEntry*)nnutilZlib_zcalloc(nullptr, sizeof(nn::fs::DirectoryEntry), dir_count);
 	r = nn::fs::ReadDirectory(&dir_count, entryBuffer, rootHandle, dir_count);
 	nn::fs::CloseDirectory(rootHandle);
 	if (R_FAILED(r)) dir_count = 0;
@@ -65,7 +66,7 @@ Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 		r = countFilesRecursive(count, next_path, hashes);
 		if (R_FAILED(r)) break;
 	}
-	delete[] entryBuffer;
+	nnutilZlib_zcfree(nullptr, entryBuffer);
 	return r;
 }
 
@@ -97,7 +98,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			u64 file_count = 0;
 			Result res = countFiles(&file_count, file_path);
 			if (R_SUCCEEDED(res) && file_count) {
-				hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, file_count, sizeof(XXH64_hash_t));
+				hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
 				if (R_SUCCEEDED(hashFilePaths(file_path, hashes))) {
 					std::sort(&hashes[0], &hashes[file_count]);
 					final_file_count = file_count;
