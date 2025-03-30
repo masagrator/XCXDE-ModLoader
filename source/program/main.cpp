@@ -1,8 +1,10 @@
 #include "lib.hpp"
 #include "nn/fs.hpp"
-#include "nn/os.hpp"
 #include "xxhash.h"
 #include <algorithm>
+#ifdef XCXDEBUG
+#include "nn/os.hpp"
+#endif
 
 #ifndef WEAK
 #define WEAK __attribute__((weak))
@@ -18,8 +20,6 @@ namespace nn { namespace codec {
 	size_t FDKfprintf(void* file, const char* string, ...) WEAK;
 	int FDKfclose(void * stream) WEAK;
 }}
-
-
 
 Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	nn::fs::DirectoryHandle rootHandle;
@@ -92,14 +92,31 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     static void Callback(void* x0, char** path) {
 		static bool initialized = false;
 		static u64 final_file_count = 0;
+		#ifdef XCXDEBUG
+		static void* file = 0;
+		#endif
 		if (!initialized) {
+			#ifdef XCXDEBUG
+			nn::fs::MountSdCardForDebug("sdmc");
+			file = nn::codec::FDKfopen("sdmc:/XCX_DEBUG.txt", "w");
+			nn::codec::FDKfprintf(file, "DEBUG INITIALIZED.\n");
+			#endif
 			char file_path[] = "rom:/mod/";
 			initialized = true;
 			u64 file_count = 0;
 			Result res = countFiles(&file_count, file_path);
 			if (R_SUCCEEDED(res) && file_count) {
+				#ifdef XCXDEBUG
+				u64 orig_file_count = file_count;
+				file_count = 104444;
+				#endif
 				hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
 				if (R_SUCCEEDED(hashFilePaths(file_path, hashes))) {
+					#ifdef XCXDEBUG
+					for (size_t i = orig_file_count; i < file_count; i++) {
+						hashes[i] = rand();
+					}
+					#endif
 					std::sort(&hashes[0], &hashes[file_count]);
 					final_file_count = file_count;
 				}
@@ -108,6 +125,9 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 		}
 		bool found = false;
 		if (final_file_count) {
+			#ifdef XCXDEBUG
+			nn::os::Tick start = nn::os::GetSystemTick();
+			#endif
 			XXH64_state_t* state = XXH64_createState();
 			XXH64_reset(state, 0);
 			if (path[0][0] != '/') {
@@ -117,6 +137,10 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			XXH64_hash_t hashCmp = XXH64_digest(state);
 			XXH64_freeState(state);
 			found = std::binary_search(&hashes[0], &hashes[final_file_count], hashCmp);
+			#ifdef XCXDEBUG
+			nn::os::Tick end = nn::os::GetSystemTick();
+			nn::codec::FDKfprintf(file, "Ticks: %d.\n", end-start);
+			#endif
 		}
 		if (!found) return Orig(x0, path);
 		char new_path[512] = "/mod/";
@@ -131,17 +155,8 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     }
 };
 
-namespace nn::fs {
-    /*
-        If not set to true, instead of returning result with error code
-        in case of any fs function failing, Application will abort.
-    */
-    Result SetResultHandledByApplication(bool enable);
-};
-
 extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
-	nn::fs::SetResultHandledByApplication(true);
 	exl::hook::Initialize();
 	//REF: 7F E2 00 F9 7F EA 00 F9 7F DA 01 B9 7F E6 07 39
 	CreateFileStruct::InstallAtOffset(0x13C5710);
