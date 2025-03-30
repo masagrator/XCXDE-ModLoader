@@ -25,31 +25,36 @@ namespace nn { namespace codec {
 template <typename T>
 class BucketSorter {
 private:
-	T* m_buckets[16] = {0};
-	size_t m_counts[16] = {0};
+	T** m_buckets = 0;
+	size_t* m_amount = 0;
+	size_t m_count = 0;
 public:
-	BucketSorter(T* hashes, size_t size) {
-		size_t counts[16] = {0};
+	BucketSorter(T* hashes, size_t size, uint8_t bits_to_and) {
+		m_count = 1 << bits_to_and;
+		size_t counts[m_count] = {0};
 		for (size_t i = 0; i < size; i++) {
-			counts[hashes[i] & 0xF]++;
+			counts[hashes[i] & (m_count - 1)]++;
 		}
-		for (size_t i = 0; i < 16; i++) {
+		m_buckets = (T**)nnutilZlib_zcalloc(nullptr, sizeof(T*), m_count);
+		for (size_t i = 0; i < m_count; i++) {
 			m_buckets[i] = (T*)nnutilZlib_zcalloc(nullptr, sizeof(T), counts[i]);
 		}
-		memcpy(m_counts, counts, sizeof(counts));
+		m_amount = (T*)nnutilZlib_zcalloc(nullptr, sizeof(size_t), m_count);
+		memcpy(m_amount, counts, sizeof(counts));
 		memset(counts, 0, sizeof(counts));
 		for (size_t i = 0; i < size; i++) {
-			m_buckets[hashes[i] & 0xF][counts[hashes[i] & 0xF]++] = hashes[i];
+			m_buckets[hashes[i] & (m_count - 1)][counts[hashes[i] & (m_count - 1)]++] = hashes[i];
 		}
 	}
 	~BucketSorter() {
-		for (size_t i = 0; i < 16; i++) {
+		for (size_t i = 0; i < m_count; i++) {
 			nnutilZlib_zcfree(nullptr, m_buckets[i]);
 		}
+		nnutilZlib_zcfree(nullptr, m_amount);
 	}
 
 	const bool find(T hash) {
-		return std::binary_search(&m_buckets[hash & 0xF][0], &m_buckets[hash & 0xF][m_counts[hash & 0xF]], hash);
+		return std::binary_search(&m_buckets[hash & (m_count - 1)][0], &m_buckets[hash & (m_count - 1)][m_amount[hash & (m_count - 1)]], hash);
 	}
 };
 
@@ -149,7 +154,7 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 					}
 					#endif
 					std::sort(&hashes[0], &hashes[file_count]);
-					hash_bucket = new BucketSorter(hashes, file_count);
+					hash_bucket = new BucketSorter(hashes, file_count, 8);
 				}
 				nnutilZlib_zcfree(nullptr, hashes);
 			}
