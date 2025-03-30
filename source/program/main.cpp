@@ -1,8 +1,11 @@
 #include "lib.hpp"
 #include "nn/fs.hpp"
-#include "nn/os.hpp"
 #include "xxhash.h"
 #include <algorithm>
+#ifdef XCXDEBUG
+#include "nn/os.hpp"
+#include <cstdlib>
+#endif
 
 #ifndef WEAK
 #define WEAK __attribute__((weak))
@@ -19,7 +22,36 @@ namespace nn { namespace codec {
 	int FDKfclose(void * stream) WEAK;
 }}
 
+template <typename T>
+class BucketSorter {
+private:
+	T* m_buckets[16] = {0};
+	size_t m_counts[16] = {0};
+public:
+	BucketSorter(T* hashes, size_t size) {
+		size_t counts[16] = {0};
+		for (size_t i = 0; i < size; i++) {
+			counts[hashes[i] & 0xF]++;
+		}
+		for (size_t i = 0; i < 16; i++) {
+			m_buckets[i] = (T*)nnutilZlib_zcalloc(nullptr, sizeof(T), counts[i]);
+		}
+		memcpy(m_counts, counts, sizeof(counts));
+		memset(counts, 0, sizeof(counts));
+		for (size_t i = 0; i < size; i++) {
+			m_buckets[hashes[i] & 0xF][counts[hashes[i] & 0xF]++] = hashes[i];
+		}
+	}
+	~BucketSorter() {
+		for (size_t i = 0; i < 16; i++) {
+			nnutilZlib_zcfree(nullptr, m_buckets[i]);
+		}
+	}
 
+	const bool find(T hash) {
+		return std::binary_search(&m_buckets[hash & 0xF][0], &m_buckets[hash & 0xF][m_counts[hash & 0xF]], hash);
+	}
+};
 
 Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	nn::fs::DirectoryHandle rootHandle;
@@ -85,29 +117,48 @@ Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 	return countFilesRecursive(&file_count, str_path, hashes);
 }
 
-XXH64_hash_t* hashes = 0;
+BucketSorter<XXH64_hash_t>* hash_bucket = 0;
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
     static void Callback(void* x0, char** path) {
 		static bool initialized = false;
-		static u64 final_file_count = 0;
+		#ifdef XCXDEBUG
+		static void* file = 0;
+		#endif
 		if (!initialized) {
+			#ifdef XCXDEBUG
+			nn::fs::MountSdCardForDebug("sdmc");
+			file = nn::codec::FDKfopen("sdmc:/XCX_DEBUG.txt", "w");
+			nn::codec::FDKfprintf(file, "DEBUG INITIALIZED.\n");
+			#endif
 			char file_path[] = "rom:/mod/";
 			initialized = true;
 			u64 file_count = 0;
 			Result res = countFiles(&file_count, file_path);
 			if (R_SUCCEEDED(res) && file_count) {
-				hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
+				#ifdef XCXDEBUG
+				u64 orig_file_count = file_count;
+				file_count = 104444;
+				#endif
+				XXH64_hash_t* hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
 				if (R_SUCCEEDED(hashFilePaths(file_path, hashes))) {
+					#ifdef XCXDEBUG
+					for (size_t i = orig_file_count; i < file_count; i++) {
+						hashes[i] = rand();
+					}
+					#endif
 					std::sort(&hashes[0], &hashes[file_count]);
-					final_file_count = file_count;
+					hash_bucket = new BucketSorter(hashes, file_count);
 				}
-				else nnutilZlib_zcfree(nullptr, hashes);
+				nnutilZlib_zcfree(nullptr, hashes);
 			}
 		}
 		bool found = false;
-		if (final_file_count) {
+		if (hash_bucket) {
+			#ifdef XCXDEBUG
+			nn::os::Tick start = nn::os::GetSystemTick();
+			#endif
 			XXH64_state_t* state = XXH64_createState();
 			XXH64_reset(state, 0);
 			if (path[0][0] != '/') {
@@ -116,7 +167,11 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			XXH64_update(state, path[0], strlen(path[0]));
 			XXH64_hash_t hashCmp = XXH64_digest(state);
 			XXH64_freeState(state);
-			found = std::binary_search(&hashes[0], &hashes[final_file_count], hashCmp);
+			found = hash_bucket -> find(hashCmp);
+			#ifdef XCXDEBUG
+			nn::os::Tick end = nn::os::GetSystemTick();
+			nn::codec::FDKfprintf(file, "Ticks: %d.\n", end-start);
+			#endif
 		}
 		if (!found) return Orig(x0, path);
 		char new_path[512] = "/mod/";
@@ -131,17 +186,8 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     }
 };
 
-namespace nn::fs {
-    /*
-        If not set to true, instead of returning result with error code
-        in case of any fs function failing, Application will abort.
-    */
-    Result SetResultHandledByApplication(bool enable);
-};
-
 extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
-	nn::fs::SetResultHandledByApplication(true);
 	exl::hook::Initialize();
 	//REF: 7F E2 00 F9 7F EA 00 F9 7F DA 01 B9 7F E6 07 39
 	CreateFileStruct::InstallAtOffset(0x13C5710);
