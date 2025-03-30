@@ -90,10 +90,10 @@ XXH64_hash_t* hashes = 0;
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
     static void Callback(void* x0, char** path) {
-		char file_path[512] = "rom:/mod/";
 		static bool initialized = false;
 		static u64 final_file_count = 0;
 		if (!initialized) {
+			char file_path[] = "rom:/mod/";
 			initialized = true;
 			u64 file_count = 0;
 			Result res = countFiles(&file_count, file_path);
