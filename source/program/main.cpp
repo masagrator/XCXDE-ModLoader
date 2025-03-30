@@ -4,6 +4,7 @@
 #include <algorithm>
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
+#include <cstdlib>
 #endif
 
 #ifndef WEAK
