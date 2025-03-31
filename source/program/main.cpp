@@ -22,6 +22,40 @@ namespace nn { namespace codec {
 	int FDKfclose(void * stream) WEAK;
 }}
 
+template <typename T>
+class BucketSorter {
+private:
+	int64_t* m_start = 0;
+	size_t m_count = 0;
+	size_t m_negabits = 0;
+	T* m_hashes = 0;
+public:
+	BucketSorter(T* hashes, size_t size, uint8_t bits_to_and) {
+		m_hashes = hashes;
+		std::sort(&m_hashes[0], &m_hashes[size]);
+		m_count = 1 << bits_to_and;
+		m_negabits = (sizeof(T) * 8) - bits_to_and;
+		m_start = (int64_t*)nnutilZlib_zcalloc(nullptr, sizeof(int64_t), m_count+1);
+		memset(m_start, -1, sizeof(int64_t) * (m_count+1));
+		for (size_t i = 0; i < size; i++) {
+			size_t index = (m_hashes[i] & ((m_count - 1) << m_negabits)) >> m_negabits;
+			if (m_start[index] == -1) {
+				m_start[index] = i;
+			}
+		}
+		m_start[m_count] = size;
+	}
+	~BucketSorter() {
+		nnutilZlib_zcfree(nullptr, m_start);
+	}
+
+	const bool find(T hash) {
+		size_t index = (hash & ((m_count - 1) << m_negabits)) >> m_negabits;
+		if (m_start[index] == -1) return false;
+		return std::binary_search(&m_hashes[m_start[index]], &m_hashes[m_start[index+1]], hash);
+	}
+};
+
 Result countFilesRecursive(u64* count, std::string path, XXH64_hash_t* hashes) {
 	nn::fs::DirectoryHandle rootHandle;
 	R_TRY(nn::fs::OpenDirectory(&rootHandle, path.c_str(), nn::fs::OpenDirectoryMode_File));
@@ -86,13 +120,12 @@ Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 	return countFilesRecursive(&file_count, str_path, hashes);
 }
 
-XXH64_hash_t* hashes = 0;
+BucketSorter<XXH64_hash_t>* hash_bucket = 0;
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
     static void Callback(void* x0, char** path) {
 		static bool initialized = false;
-		static u64 final_file_count = 0;
 		#ifdef XCXDEBUG
 		static void* file = 0;
 		#endif
@@ -111,21 +144,20 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 				u64 orig_file_count = file_count;
 				file_count = 104444;
 				#endif
-				hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
+				XXH64_hash_t* hashes = (XXH64_hash_t*)nnutilZlib_zcalloc(nullptr, sizeof(XXH64_hash_t), file_count);
 				if (R_SUCCEEDED(hashFilePaths(file_path, hashes))) {
 					#ifdef XCXDEBUG
 					for (size_t i = orig_file_count; i < file_count; i++) {
 						hashes[i] = rand();
 					}
 					#endif
-					std::sort(&hashes[0], &hashes[file_count]);
-					final_file_count = file_count;
+					hash_bucket = new BucketSorter(hashes, file_count, 8);
 				}
 				else nnutilZlib_zcfree(nullptr, hashes);
 			}
 		}
 		bool found = false;
-		if (final_file_count) {
+		if (hash_bucket) {
 			#ifdef XCXDEBUG
 			nn::os::Tick start = nn::os::GetSystemTick();
 			#endif
@@ -137,10 +169,14 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			XXH64_update(state, path[0], strlen(path[0]));
 			XXH64_hash_t hashCmp = XXH64_digest(state);
 			XXH64_freeState(state);
-			found = std::binary_search(&hashes[0], &hashes[final_file_count], hashCmp);
+			found = hash_bucket -> find(hashCmp);
 			#ifdef XCXDEBUG
 			nn::os::Tick end = nn::os::GetSystemTick();
-			nn::codec::FDKfprintf(file, "Ticks: %d.\n", end-start);
+			static nn::os::Tick average = nn::os::Tick(0);
+			static size_t average_count = 0;
+			average = nn::os::Tick(((average.GetInt64Value() * average_count) + (end-start).GetInt64Value()) / (average_count+1));
+			average_count++;
+			nn::codec::FDKfprintf(file, "Ticks average: %d\n", average);
 			#endif
 		}
 		if (!found) return Orig(x0, path);
