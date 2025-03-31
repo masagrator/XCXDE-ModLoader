@@ -25,36 +25,34 @@ namespace nn { namespace codec {
 template <typename T>
 class BucketSorter {
 private:
-	T** m_buckets = 0;
-	size_t* m_amount = 0;
+	int64_t* m_start = 0;
 	size_t m_count = 0;
+	size_t m_negabits = 0;
+	T* m_hashes = 0;
 public:
 	BucketSorter(T* hashes, size_t size, uint8_t bits_to_and) {
+		m_hashes = hashes;
+		std::sort(&m_hashes[0], &m_hashes[size]);
 		m_count = 1 << bits_to_and;
-		size_t counts[m_count] = {0};
+		m_negabits = (sizeof(T) * 8) - bits_to_and;
+		m_start = (int64_t*)nnutilZlib_zcalloc(nullptr, sizeof(int64_t), m_count+1);
+		memset(m_start, -1, sizeof(int64_t) * (m_count+1));
 		for (size_t i = 0; i < size; i++) {
-			counts[hashes[i] & (m_count - 1)]++;
+			size_t index = (m_hashes[i] & ((m_count - 1) << m_negabits)) >> m_negabits;
+			if (m_start[index] == -1) {
+				m_start[index] = i;
+			}
 		}
-		m_buckets = (T**)nnutilZlib_zcalloc(nullptr, sizeof(T*), m_count);
-		for (size_t i = 0; i < m_count; i++) {
-			m_buckets[i] = (T*)nnutilZlib_zcalloc(nullptr, sizeof(T), counts[i]);
-		}
-		m_amount = (T*)nnutilZlib_zcalloc(nullptr, sizeof(size_t), m_count);
-		memcpy(m_amount, counts, sizeof(counts));
-		memset(counts, 0, sizeof(counts));
-		for (size_t i = 0; i < size; i++) {
-			m_buckets[hashes[i] & (m_count - 1)][counts[hashes[i] & (m_count - 1)]++] = hashes[i];
-		}
+		m_start[m_count] = size;
 	}
 	~BucketSorter() {
-		for (size_t i = 0; i < m_count; i++) {
-			nnutilZlib_zcfree(nullptr, m_buckets[i]);
-		}
-		nnutilZlib_zcfree(nullptr, m_amount);
+		nnutilZlib_zcfree(nullptr, m_start);
 	}
 
 	const bool find(T hash) {
-		return std::binary_search(&m_buckets[hash & (m_count - 1)][0], &m_buckets[hash & (m_count - 1)][m_amount[hash & (m_count - 1)]], hash);
+		size_t index = (hash & ((m_count - 1) << m_negabits)) >> m_negabits;
+		if (m_start[index] == -1) return false;
+		return std::binary_search(&m_hashes[m_start[index]], &m_hashes[m_start[index+1]], hash);
 	}
 };
 
@@ -153,10 +151,9 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 						hashes[i] = rand();
 					}
 					#endif
-					std::sort(&hashes[0], &hashes[file_count]);
 					hash_bucket = new BucketSorter(hashes, file_count, 8);
 				}
-				nnutilZlib_zcfree(nullptr, hashes);
+				else nnutilZlib_zcfree(nullptr, hashes);
 			}
 		}
 		bool found = false;
@@ -175,7 +172,11 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 			found = hash_bucket -> find(hashCmp);
 			#ifdef XCXDEBUG
 			nn::os::Tick end = nn::os::GetSystemTick();
-			nn::codec::FDKfprintf(file, "Ticks: %d.\n", end-start);
+			static nn::os::Tick average = nn::os::Tick(0);
+			static size_t average_count = 0;
+			average = nn::os::Tick(((average.GetInt64Value() * average_count) + (end-start).GetInt64Value()) / (average_count+1));
+			average_count++;
+			nn::codec::FDKfprintf(file, "Ticks average: %d\n", average);
 			#endif
 		}
 		if (!found) return Orig(x0, path);
