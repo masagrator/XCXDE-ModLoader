@@ -23,36 +23,46 @@ namespace nn { namespace codec {
 }}
 
 template <typename T>
-class BucketSorter {
+requires (std::is_arithmetic_v<T>)
+class BucketSortedArray {
 private:
 	int64_t* m_start = 0;
 	size_t m_count = 0;
 	size_t m_negabits = 0;
-	T* m_hashes = 0;
+	std::make_unsigned_t<T>* m_hashes = 0;
+	size_t m_elements = 0;
 public:
-	BucketSorter(T* hashes, size_t size, uint8_t bits_to_and) {
-		m_hashes = hashes;
-		std::sort(&m_hashes[0], &m_hashes[size]);
+	BucketSortedArray(T* hashes, size_t size, uint8_t bits_to_and) {
+		m_elements = size;
+		m_hashes = (std::make_unsigned_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(T), m_elements);
+		std::copy(&hashes[0], &hashes[size], m_hashes);
+		std::sort(&m_hashes[0], &m_hashes[m_elements]);
 		m_count = 1 << bits_to_and;
 		m_negabits = (sizeof(T) * 8) - bits_to_and;
 		m_start = (int64_t*)nnutilZlib_zcalloc(nullptr, sizeof(int64_t), m_count+1);
 		memset(m_start, -1, sizeof(int64_t) * (m_count+1));
-		for (size_t i = 0; i < size; i++) {
-			size_t index = (m_hashes[i] & ((m_count - 1) << m_negabits)) >> m_negabits;
+		for (size_t i = 0; i < m_elements; i++) {
+			size_t index = (m_hashes[i] >> m_negabits) & (m_count - 1);
 			if (m_start[index] == -1) {
 				m_start[index] = i;
 			}
 		}
-		m_start[m_count] = size;
+		m_start[m_count] = m_elements;
+		int64_t last_good_end = 0;
+		for (size_t i = m_count; i > 0; i--) {
+			if (m_start[i] != -1) last_good_end = m_start[i];
+			else m_start[i] = last_good_end * -1;
+		}
 	}
-	~BucketSorter() {
+	~BucketSortedArray() {
 		nnutilZlib_zcfree(nullptr, m_start);
+		nnutilZlib_zcfree(nullptr, m_hashes);
 	}
 
 	const bool find(T hash) {
-		size_t index = (hash & ((m_count - 1) << m_negabits)) >> m_negabits;
-		if (m_start[index] == -1) return false;
-		return std::binary_search(&m_hashes[m_start[index]], &m_hashes[m_start[index+1]], hash);
+		size_t index = ((std::make_unsigned_t<T>)hash >> m_negabits) & (m_count - 1);
+		if (m_start[index] < 0) return false;
+		return std::binary_search(&m_hashes[m_start[index]], &m_hashes[std::abs(m_start[index+1])], hash);
 	}
 };
 
@@ -120,7 +130,7 @@ Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 	return countFilesRecursive(&file_count, str_path, hashes);
 }
 
-BucketSorter<XXH64_hash_t>* hash_bucket = 0;
+BucketSortedArray<XXH64_hash_t>* hash_bucket = 0;
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
@@ -151,9 +161,9 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 						hashes[i] = rand();
 					}
 					#endif
-					hash_bucket = new BucketSorter(hashes, file_count, 8);
+					hash_bucket = new BucketSortedArray(hashes, file_count, 8);
 				}
-				else nnutilZlib_zcfree(nullptr, hashes);
+				nnutilZlib_zcfree(nullptr, hashes);
 			}
 		}
 		bool found = false;
