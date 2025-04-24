@@ -205,8 +205,14 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
 	exl::hook::Initialize();
-	//REF: 7F E2 00 F9 7F EA 00 F9 7F DA 01 B9 7F E6 07 39
-	CreateFileStruct::InstallAtOffset(0x13C5710);
+	uint8_t pattern[] = {0xFD, 0x7B, 0xBC, 0xA9, 0xF7, 0x0B, 0x00, 0xF9, 0xF6, 0x57, 0x02, 0xA9, 0xF4, 0x4F, 0x03, 0xA9, 0xFD, 0x03, 0x00, 0x91, 0x28, 0x20, 0x40, 0xF9};
+	//REF: FD 7B BC A9 F7 0B 00 F9 F6 57 02 A9 F4 4F 03 A9 FD 03 00 91 28 20 40 F9
+	uintptr_t one_zero_one = exl::util::modules::GetTargetOffset(0x13C5710);
+	if (!memcmp(pattern, (void*)one_zero_one, sizeof(pattern)))
+		CreateFileStruct::InstallAtOffset(0x13C5710);
+	uintptr_t one_zero_two = exl::util::modules::GetTargetOffset(0x13B59D0);
+	if (!memcmp(pattern, (void*)one_zero_two, sizeof(pattern)))
+		CreateFileStruct::InstallAtOffset(0x13B59D0);
 }
 
 extern "C" NORETURN void exl_exception_entry() {
