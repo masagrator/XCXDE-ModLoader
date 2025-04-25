@@ -3,7 +3,6 @@
 #include "xxhash.h"
 #include <algorithm>
 #include <array>
-#include <functional>
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
 #include <cstdlib>
