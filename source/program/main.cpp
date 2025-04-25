@@ -3,6 +3,7 @@
 #include "xxhash.h"
 #include <algorithm>
 #include <array>
+#include <functional>
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
 #include <cstdlib>
@@ -27,19 +28,23 @@ template <typename T>
 requires (std::is_arithmetic_v<T>)
 class BucketSortedArray {
 private:
-	int64_t* m_start = 0;
+	std::make_signed_t<T>* m_start = 0;
 	size_t m_count = 0;
 	size_t m_negabits = 0;
 	std::make_unsigned_t<T>* m_hashes = 0;
 public:
-	BucketSortedArray(T* hashes, size_t size, uint8_t bits_to_and) {
+
+	BucketSortedArray(T* hashes, const size_t size, uint8_t bits_to_and) {
+		//Flatten out m_count since anything above amount of bits T represents won't be used anyway
+		if (bits_to_and > sizeof(T) * 8)
+			bits_to_and = sizeof(T) * 8;
 		m_hashes = (std::make_unsigned_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(T), size);
 		std::copy(&hashes[0], &hashes[size], m_hashes);
 		std::sort(&m_hashes[0], &m_hashes[size]);
 		m_count = 1 << bits_to_and;
 		m_negabits = (sizeof(T) * 8) - bits_to_and;
-		m_start = (int64_t*)nnutilZlib_zcalloc(nullptr, sizeof(int64_t), m_count+1);
-		memset(m_start, -1, sizeof(int64_t) * (m_count+1));
+		m_start = (std::make_signed_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(std::make_signed_t<T>), m_count+1);
+		memset(m_start, -1, sizeof(std::make_signed_t<T>) * (m_count+1));
 		for (size_t i = 0; i < size; i++) {
 			size_t index = (m_hashes[i] >> m_negabits) & (m_count - 1);
 			if (m_start[index] == -1) {
@@ -47,7 +52,7 @@ public:
 			}
 		}
 		m_start[m_count] = size;
-		int64_t last_good_end = 0;
+		std::make_signed_t<T> last_good_end = 0;
 		for (size_t i = m_count; i > 0; i--) {
 			if (m_start[i] != -1) last_good_end = m_start[i];
 			else m_start[i] = last_good_end * -1;
