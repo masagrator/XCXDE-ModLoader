@@ -31,24 +31,22 @@ private:
 	size_t m_count = 0;
 	size_t m_negabits = 0;
 	std::make_unsigned_t<T>* m_hashes = 0;
-	size_t m_elements = 0;
 public:
 	BucketSortedArray(T* hashes, size_t size, uint8_t bits_to_and) {
-		m_elements = size;
-		m_hashes = (std::make_unsigned_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(T), m_elements);
+		m_hashes = (std::make_unsigned_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(T), size);
 		std::copy(&hashes[0], &hashes[size], m_hashes);
-		std::sort(&m_hashes[0], &m_hashes[m_elements]);
+		std::sort(&m_hashes[0], &m_hashes[size]);
 		m_count = 1 << bits_to_and;
 		m_negabits = (sizeof(T) * 8) - bits_to_and;
 		m_start = (int64_t*)nnutilZlib_zcalloc(nullptr, sizeof(int64_t), m_count+1);
 		memset(m_start, -1, sizeof(int64_t) * (m_count+1));
-		for (size_t i = 0; i < m_elements; i++) {
+		for (size_t i = 0; i < size; i++) {
 			size_t index = (m_hashes[i] >> m_negabits) & (m_count - 1);
 			if (m_start[index] == -1) {
 				m_start[index] = i;
 			}
 		}
-		m_start[m_count] = m_elements;
+		m_start[m_count] = size;
 		int64_t last_good_end = 0;
 		for (size_t i = m_count; i > 0; i--) {
 			if (m_start[i] != -1) last_good_end = m_start[i];
