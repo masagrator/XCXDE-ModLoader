@@ -2,6 +2,7 @@
 #include "nn/fs.hpp"
 #include "xxhash.h"
 #include <algorithm>
+#include <array>
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
 #include <cstdlib>
@@ -207,11 +208,11 @@ extern "C" void exl_main(void* x0, void* x1) {
 	exl::hook::Initialize();
 	uint8_t pattern[] = {0xFD, 0x7B, 0xBC, 0xA9, 0xF7, 0x0B, 0x00, 0xF9, 0xF6, 0x57, 0x02, 0xA9, 0xF4, 0x4F, 0x03, 0xA9, 0xFD, 0x03, 0x00, 0x91, 0x28, 0x20, 0x40, 0xF9};
 	//REF: FD 7B BC A9 F7 0B 00 F9 F6 57 02 A9 F4 4F 03 A9 FD 03 00 91 28 20 40 F9
-	uint32_t offsets[] = {
+	std::array offsets = {
 		0x13C5710,	//1.0.1
 		0x13B59D0	//1.0.2
 	};
-	for (size_t i = 0; i < sizeof(offsets); i++) {
+	for (size_t i = 0; i < offsets.size(); i++) {
 		uintptr_t pointer = exl::util::modules::GetTargetOffset(offsets[i]);
 		if (!memcmp(pattern, (void*)pointer, sizeof(pattern))) {
 			CreateFileStruct::InstallAtOffset(offsets[i]);
