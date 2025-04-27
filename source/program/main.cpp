@@ -14,7 +14,7 @@
 
 extern "C" {
 	void* nnutilZlib_zcalloc(void* put_nullptr, int size, int nmemb) WEAK;
-	void* nnutilZlib_zcfree(void* put_nullptr, void* pointer) WEAK;
+	void nnutilZlib_zcfree(void* put_nullptr, void* pointer) WEAK;
 }
 
 namespace nn { namespace codec {
@@ -31,19 +31,32 @@ private:
 	size_t m_count = 0;
 	size_t m_negabits = 0;
 	std::make_unsigned_t<T>* m_hashes = 0;
-public:
+	bool valid = false;
+	
+	//We are using here functions provided by nnSDK that are wrappers around malloc() and free() to get access to game's heap.
+	//This is to avoid situations where some libraries are including malloc() and free() which results in using plugin's own heap.
+	constexpr void* Allocate(size_t size, size_t nmemb) {
+		return nnutilZlib_zcalloc(nullptr, size, nmemb);
+	}
 
+	constexpr void Unallocate(void* ptr) {
+		return nnutilZlib_zcfree(nullptr, ptr);
+	}
+public:
 	BucketSortedArray(T* hashes, const size_t size, uint8_t bits_to_and) {
+		if (!hashes || !size) return;
+		m_hashes = (std::make_unsigned_t<T>*)Allocate(sizeof(T), size);
+		if (!m_hashes) return;
+		std::copy(&hashes[0], &hashes[size], m_hashes);
+		std::sort(&m_hashes[0], &m_hashes[size]);
 		//Flatten out m_count since anything above amount of bits T represents won't be used anyway
 		if (bits_to_and > sizeof(T) * 8)
 			bits_to_and = sizeof(T) * 8;
-		m_hashes = (std::make_unsigned_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(T), size);
-		std::copy(&hashes[0], &hashes[size], m_hashes);
-		std::sort(&m_hashes[0], &m_hashes[size]);
 		m_count = 1 << bits_to_and;
-		m_negabits = (sizeof(T) * 8) - bits_to_and;
-		m_start = (std::make_signed_t<T>*)nnutilZlib_zcalloc(nullptr, sizeof(std::make_signed_t<T>), m_count+1);
+		m_start = (std::make_signed_t<T>*)Allocate(sizeof(std::make_signed_t<T>), m_count+1);
+		if (!m_start) return;
 		memset(m_start, -1, sizeof(std::make_signed_t<T>) * (m_count+1));
+		m_negabits = (sizeof(T) * 8) - bits_to_and;
 		for (size_t i = 0; i < size; i++) {
 			size_t index = (m_hashes[i] >> m_negabits) & (m_count - 1);
 			if (m_start[index] == -1) {
@@ -56,16 +69,24 @@ public:
 			if (m_start[i] != -1) last_good_end = m_start[i];
 			else m_start[i] = last_good_end * -1;
 		}
+		valid = true;
 	}
 	~BucketSortedArray() {
-		nnutilZlib_zcfree(nullptr, m_start);
-		nnutilZlib_zcfree(nullptr, m_hashes);
+		if (m_start)
+			Unallocate(m_start);
+		if (m_hashes)
+			Unallocate(m_hashes);
 	}
 
 	const bool find(T hash) {
 		size_t index = ((std::make_unsigned_t<T>)hash >> m_negabits) & (m_count - 1);
 		if (m_start[index] < 0) return false;
 		return std::binary_search(&m_hashes[m_start[index]], &m_hashes[std::abs(m_start[index+1])], hash);
+	}
+
+	//Use to check if constructed class was created properly since this class avoids using exceptions
+	const bool isValid() {
+		return valid;
 	}
 };
 
@@ -165,6 +186,10 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 					}
 					#endif
 					hash_bucket = new BucketSortedArray(hashes, file_count, 8);
+					if (hash_bucket -> isValid() == false) {
+						delete hash_bucket;
+						hash_bucket = 0;
+					}
 				}
 				nnutilZlib_zcfree(nullptr, hashes);
 			}
