@@ -4,6 +4,7 @@
 #include <array>
 #include "xxhash.h"
 #include "Music.hpp"
+#include <charconv>
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
 #include <cstdlib>
@@ -18,14 +19,21 @@ extern "C" {
 	void nnutilZlib_zcfree(void* put_nullptr, void* pointer) WEAK;
 }
 
-namespace nn { namespace codec {
-	void* FDKfopen(const char * sNazwaPliku, const char * sTryb ) WEAK;
-	size_t FDKfread(void* buffer, int size, uint count, void* stream) WEAK;
-	size_t FDKfprintf(void* file, const char* string, ...) WEAK;
-	int FDKfseek(void* stream, int offset, int origin) WEAK;
-	long FDKftell(void* stream) WEAK;
-	int FDKfclose(void * stream) WEAK;
-}}
+namespace nn { 
+	namespace codec {
+		void* FDKfopen(const char * sNazwaPliku, const char * sTryb ) WEAK;
+		size_t FDKfread(void* buffer, int size, uint count, void* stream) WEAK;
+		size_t FDKfprintf(void* file, const char* string, ...) WEAK;
+		int FDKfseek(void* stream, int offset, int origin) WEAK;
+		long FDKftell(void* stream) WEAK;
+		int FDKfclose(void * stream) WEAK;
+		int FDKatoi(const char* string) WEAK;
+	}
+
+	namespace util {
+		int SNPrintf(char* s, size_t n, const char* format, ...) WEAK;
+	}
+}
 
 template <typename T>
 requires (std::is_arithmetic_v<T>)
@@ -159,8 +167,7 @@ Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 }
 
 BucketSortedArray<XXH64_hash_t>* hash_bucket = 0;
-bool null_music = true;
-bool bgm_orig = false;
+BucketSortedArray<uint32_t>* music_bucket = 0;
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
@@ -199,6 +206,44 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 				}
 				nnutilZlib_zcfree(nullptr, hashes);
 			}
+			nn::fs::DirectoryHandle rootHandle;
+			nn::fs::OpenDirectory(&rootHandle, "rom:/sound/", nn::fs::OpenDirectoryMode_File);
+			s64 fsfile_count = 0;
+			Result r = nn::fs::GetDirectoryEntryCount(&fsfile_count, rootHandle);
+			if (R_FAILED(r)) {
+				nn::fs::CloseDirectory(rootHandle);
+			}
+			else {
+				nn::fs::DirectoryEntry* entryBuffer = (nn::fs::DirectoryEntry*)nnutilZlib_zcalloc(nullptr, sizeof(nn::fs::DirectoryEntry), fsfile_count);
+				r = nn::fs::ReadDirectory(&fsfile_count, entryBuffer, rootHandle, fsfile_count);
+				nn::fs::CloseDirectory(rootHandle);
+				if (R_SUCCEEDED(r)) {
+					size_t wem_count = 0;
+					for (s64 i = 0; i < fsfile_count; i++) {
+						std::string filename = entryBuffer[i].m_Name;
+						if (filename.ends_with(".wem") == true)
+							wem_count += 1;
+					}
+					if (wem_count) {
+						uint32_t* wem_hashes = (uint32_t*)nnutilZlib_zcalloc(nullptr, sizeof(uint32_t), wem_count);
+						size_t wem_hashes_count = 0;
+						for (s64 i = 0; i < fsfile_count; i++) {
+							std::string filename = entryBuffer[i].m_Name;
+							if (filename.ends_with(".wem") == true) {
+								filename = filename.substr(0, filename.length() - 4);
+								wem_hashes[wem_hashes_count++] = nn::codec::FDKatoi(filename.c_str());
+							}
+						}
+						music_bucket = new BucketSortedArray(wem_hashes, wem_count, 8);
+						if (music_bucket -> isValid() == false) {
+							delete music_bucket;
+							music_bucket = 0;
+						}
+						nnutilZlib_zcfree(nullptr, wem_hashes);
+					}
+				}
+				nnutilZlib_zcfree(nullptr, entryBuffer);
+			}
 		}
 		bool found = false;
 		if (hash_bucket) {
@@ -236,42 +281,16 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     }
 };
 
-HOOK_DEFINE_TRAMPOLINE(LoadPCKFile) {
+struct WemMeta {
+	bool LoadExternal;
+};
 
-    static void Callback(void* x0, void* x1, char* pck_filename) {
-		if (strncmp(pck_filename, "Music.pck", 9)) 
-			return Orig(x0, x1, pck_filename);
-		for (size_t i = 0; i < Music_files.size(); i++) {
-			char filepath[128] = "rom:/sound/";
-			strncat(filepath, Music_files[i], 115);
-			void* file = 0;
-			file = nn::codec::FDKfopen(filepath, "rb");
-			if (!file) {
-				null_music = false;
-				break;
-			}
-			nn::codec::FDKfclose(file);
-		}
-		if (null_music) {
-			pck_filename = &pck_filename[1];
-			char filepath[128] = "rom:/sound/bgm.bnk";
-			void* file = nn::codec::FDKfopen(filepath, "rb");
-			nn::codec::FDKfseek(file, 0, 2);
-			long size = nn::codec::FDKftell(file);
-			nn::codec::FDKfseek(file, 0, 0);
-			void* buffer = nnutilZlib_zcalloc(nullptr, size, 1);
-			nn::codec::FDKfread(buffer, size, 1, file);
-			nn::codec::FDKfclose(file);
-			XXH64_state_t* state = XXH64_createState();
-			XXH64_update(state, buffer, size);
-			XXH64_hash_t hashCmp = XXH64_digest(state);
-			XXH64_freeState(state);
-			nnutilZlib_zcfree(nullptr, buffer);
-			if (hashCmp == bgm_bnk_hash) {
-				bgm_orig = true;
-			}
-		}
-		return Orig(x0, x1, pck_filename);
+HOOK_DEFINE_TRAMPOLINE(LoadWEMFile) {
+
+    static void Callback(void* x0, uint32_t hash_name, int w2, WemMeta* x3, void* x4, void* x5) {
+		if (music_bucket && music_bucket -> find(hash_name))
+			x3 -> LoadExternal = true;
+		return Orig(x0, hash_name, w2, x3, x4, x5);
     }
 };
 
@@ -284,16 +303,18 @@ extern "C" void exl_main(void* x0, void* x1) {
 		0x13C5710,	//1.0.1
 		0x13B59D0	//1.0.2
 	};
-	//REF: "Music.pck" xref
-	std::array LoadPCK_offsets = {
-		0x28860,
-		0x289E0
+	//REF: FF 43 02 D1 FD 7B 03 A9 FC 6F 04 A9 FA 67 05 A9 F8 5F 06 A9 F6 57 07 A9 F4 4F 08 A9 FD C3 00 91 13 E0 00 91 F6 03 00 AA F4 03 05 AA E0 03 13 AA F5 03 04 AA F7 03 03 AA F8 03 02 2A F9 03 01 2A
+	std::array WEM_offsets = {
+		0x2BED0,
+		0x2C050
 	};
+
 	for (size_t i = 0; i < offsets.size(); i++) {
 		uintptr_t pointer = exl::util::modules::GetTargetOffset(offsets[i]);
 		if (!memcmp(pattern, (void*)pointer, sizeof(pattern))) {
 			CreateFileStruct::InstallAtOffset(offsets[i]);
-			LoadPCKFile::InstallAtOffset(LoadPCK_offsets[i]);
+			LoadWEMFile::InstallAtOffset(WEM_offsets[i]);
+
 			break;
 		}
 	}
