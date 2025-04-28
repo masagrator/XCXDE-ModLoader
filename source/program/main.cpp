@@ -1,8 +1,9 @@
 #include "lib.hpp"
 #include "nn/fs.hpp"
-#include "xxhash.h"
 #include <algorithm>
 #include <array>
+#include "xxhash.h"
+#include "Music.hpp"
 #ifdef XCXDEBUG
 #include "nn/os.hpp"
 #include <cstdlib>
@@ -19,7 +20,10 @@ extern "C" {
 
 namespace nn { namespace codec {
 	void* FDKfopen(const char * sNazwaPliku, const char * sTryb ) WEAK;
+	size_t FDKfread(void* buffer, int size, uint count, void* stream) WEAK;
 	size_t FDKfprintf(void* file, const char* string, ...) WEAK;
+	int FDKfseek(void* stream, int offset, int origin) WEAK;
+	long FDKftell(void* stream) WEAK;
 	int FDKfclose(void * stream) WEAK;
 }}
 
@@ -155,6 +159,8 @@ Result hashFilePaths(const char* path, XXH64_hash_t* hashes) {
 }
 
 BucketSortedArray<XXH64_hash_t>* hash_bucket = 0;
+bool null_music = true;
+bool bgm_orig = false;
 
 HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
 
@@ -230,6 +236,45 @@ HOOK_DEFINE_TRAMPOLINE(CreateFileStruct) {
     }
 };
 
+HOOK_DEFINE_TRAMPOLINE(LoadPCKFile) {
+
+    static void Callback(void* x0, void* x1, char* pck_filename) {
+		if (strncmp(pck_filename, "Music.pck", 9)) 
+			return Orig(x0, x1, pck_filename);
+		for (size_t i = 0; i < Music_files.size(); i++) {
+			char filepath[128] = "rom:/sound/";
+			strncat(filepath, Music_files[i], 115);
+			void* file = 0;
+			file = nn::codec::FDKfopen(filepath, "rb");
+			if (!file) {
+				null_music = false;
+				break;
+			}
+			nn::codec::FDKfclose(file);
+		}
+		if (null_music) {
+			pck_filename = &pck_filename[1];
+			char filepath[128] = "rom:/sound/bgm.bnk";
+			void* file = nn::codec::FDKfopen(filepath, "rb");
+			nn::codec::FDKfseek(file, 0, 2);
+			long size = nn::codec::FDKftell(file);
+			nn::codec::FDKfseek(file, 0, 0);
+			void* buffer = nnutilZlib_zcalloc(nullptr, size, 1);
+			nn::codec::FDKfread(buffer, size, 1, file);
+			nn::codec::FDKfclose(file);
+			XXH64_state_t* state = XXH64_createState();
+			XXH64_update(state, buffer, size);
+			XXH64_hash_t hashCmp = XXH64_digest(state);
+			XXH64_freeState(state);
+			nnutilZlib_zcfree(nullptr, buffer);
+			if (hashCmp == bgm_bnk_hash) {
+				bgm_orig = true;
+			}
+		}
+		return Orig(x0, x1, pck_filename);
+    }
+};
+
 extern "C" void exl_main(void* x0, void* x1) {
 	/* Setup hooking enviroment. */
 	exl::hook::Initialize();
@@ -239,10 +284,16 @@ extern "C" void exl_main(void* x0, void* x1) {
 		0x13C5710,	//1.0.1
 		0x13B59D0	//1.0.2
 	};
+	//REF: "Music.pck" xref
+	std::array LoadPCK_offsets = {
+		0x28860,
+		0x289E0
+	};
 	for (size_t i = 0; i < offsets.size(); i++) {
 		uintptr_t pointer = exl::util::modules::GetTargetOffset(offsets[i]);
 		if (!memcmp(pattern, (void*)pointer, sizeof(pattern))) {
 			CreateFileStruct::InstallAtOffset(offsets[i]);
+			LoadPCKFile::InstallAtOffset(LoadPCK_offsets[i]);
 			break;
 		}
 	}
