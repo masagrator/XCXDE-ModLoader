@@ -317,6 +317,7 @@ int getWemRiffLength(uint32_t hash30, double* duration, double* startLoop) {
 	nn::codec::FDKfseek(file, 0x3C, 0);
 	nn::codec::FDKfread(&magic, 4, 1, file);
 	if (magic == 0x6173616D) {
+		nn::codec::FDKfseek(file, 8, 1);
 		nn::codec::FDKfread(startLoop, 8, 1, file);
 	}
 	nn::codec::FDKfclose(file);
@@ -395,7 +396,7 @@ HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
 					uint32_t numStingers = (*(uint32_t*)(ptr));
 					ptr += 4;
 					ptr += 5 * numStingers;
-					(*(double*)(ptr)) = srcDuration;
+					if (srcDuration != -1.0) (*(double*)(ptr)) = srcDuration;
 					uint32_t numMarkers = (*(uint32_t*)(ptr));
 					ptr += 4;
 					for (size_t i = 0; i < numMarkers; i++) {
