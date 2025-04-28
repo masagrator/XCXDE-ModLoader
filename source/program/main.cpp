@@ -285,10 +285,131 @@ struct WemMeta {
 
 HOOK_DEFINE_TRAMPOLINE(LoadWEMFile) {
 
-    static void Callback(void* x0, uint32_t hash_name, int w2, WemMeta* x3, void* x4, void* x5) {
+    static int Callback(void* x0, uint32_t hash_name, int w2, WemMeta* x3, void* x4, void* x5) {
 		if (music_bucket && music_bucket -> find(hash_name))
 			x3 -> LoadExternal = true;
 		return Orig(x0, hash_name, w2, x3, x4, x5);
+    }
+};
+
+int getWemRiffLength(uint32_t hash30, double* duration, double* startLoop) {
+	char filepath[128] = "";
+	nn::util::SNPrintf(filepath, sizeof(filepath), "rom:/sound/%u.wem", hash30);
+	void* file = nn::codec::FDKfopen(filepath, "rb");
+	if (!file)
+		return 1;
+	uint32_t magic = 0;
+	nn::codec::FDKfread(&magic, 4, 1, file);
+	if (magic != 0x46464952) {
+		nn::codec::FDKfclose(file);
+		return 1;
+	}
+	nn::codec::FDKfseek(file, 0x14, 0);
+	uint16_t codec = 0;
+	nn::codec::FDKfread(&codec, 2, 1, file);
+	if (codec != 12345) {
+		nn::codec::FDKfclose(file);
+		return 1;
+	}
+	nn::codec::FDKfseek(file, 0x2C, 0);
+	uint32_t time = 0;
+	nn::codec::FDKfread(&time, 4, 1, file);
+	nn::codec::FDKfseek(file, 0x3C, 0);
+	nn::codec::FDKfread(&magic, 4, 1, file);
+	if (magic == 0x6173616D) {
+		nn::codec::FDKfread(startLoop, 8, 1, file);
+	}
+	nn::codec::FDKfclose(file);
+	*duration = (double)time / 48.0;
+	return 0;
+}
+
+HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
+
+    static int Callback(void* x0, void* data, int w2, void* x3, int w4) {
+		static bool initialized = false;
+		if (initialized || !music_bucket || !data)
+			return Orig(x0, data, w2, x3, w4);
+		uintptr_t ptr = (uintptr_t)data;
+		ptr &= ~0xFFFF;
+		uint32_t bank_hash = *(uint32_t*)(ptr + 0xC);
+		if (bank_hash != 0x1899AC8D)
+			return Orig(x0, data, w2, x3, w4);
+		initialized = true;
+		uint32_t HIRC_Magic = *(uint32_t*)(ptr + 0x20);
+		if (HIRC_Magic == 0x42534948)
+			return Orig(x0, data, w2, x3, w4);
+		uint32_t entry_count = *(uint32_t*)(ptr + 0x28);
+		ptr += 0x28;
+		uint32_t MusicSegmentID = 0;
+		double srcDuration = -1.0;
+		double startLoop = -1.0;
+		for (uint32_t i = 0; i < entry_count; i++) {
+			char type = (*(char*)(ptr++));
+			uint32_t size = (*(uint32_t*)ptr);
+			ptr += 4;
+			uintptr_t next_ptr = ptr + size;
+			if (type == 0xB) {
+				startLoop = -1.0;
+				srcDuration = -1.0;
+				MusicSegmentID = 0;
+				ptr += 5;
+				uint32_t numSources = (*(uint32_t*)ptr);
+				ptr += 4;
+				ptr += numSources * 14;
+				uint32_t numPlaylistItems = (*(uint32_t*)ptr);
+				ptr += 4;
+				for (uint32_t x = 0; x < numPlaylistItems; x++) {
+					ptr += 4;
+					uint32_t hash_filename = (*(uint32_t*)ptr);
+					ptr += 32;
+					if (music_bucket -> find(hash_filename)) {
+						int Result = getWemRiffLength(hash_filename, &srcDuration, &startLoop);
+						if (!Result)
+							*(double*)ptr = srcDuration;
+					}
+					ptr += 8;
+				}
+				ptr += 17;
+				MusicSegmentID = (*(uint32_t*)ptr);
+			}
+			else if (type == 0xA) {
+				uint32_t ID = (*(uint32_t*)(ptr));
+				if (ID == MusicSegmentID) {
+					ptr += 19;
+					uint8_t numProps = (*(uint8_t*)(ptr++));
+					ptr += 5 * numProps;
+					numProps = (*(uint8_t*)(ptr++));
+					ptr += 5 * numProps;
+					if ((*(uint8_t*)(ptr++)) == 3)
+						ptr++;
+					ptr += 11;
+					uint8_t numStateProps = (*(uint8_t*)(ptr++));
+					ptr += 5 * numStateProps;
+					uint8_t numStateGroups = (*(uint8_t*)(ptr++));
+					ptr += 5 * numStateGroups;
+					uint16_t numRTPC = (*(uint16_t*)(ptr));
+					ptr += 2;
+					ptr += 5 * numRTPC;
+					ptr += 31;
+					uint32_t numStingers = (*(uint32_t*)(ptr));
+					ptr += 4;
+					ptr += 5 * numStingers;
+					(*(double*)(ptr)) = srcDuration;
+					uint32_t numMarkers = (*(uint32_t*)(ptr));
+					ptr += 4;
+					for (size_t i = 0; i < numMarkers; i++) {
+						uint32_t markerID = (*(uint32_t*)(ptr));
+						ptr += 4;
+						if (markerID == 43573010 && startLoop != -1.0) *(double*)(ptr) = startLoop;
+						else if (markerID == 1539036744 && srcDuration != 1.0) *(double*)(ptr) = srcDuration;
+						ptr += 9;
+					}
+				}
+			}
+			ptr = next_ptr;
+		}
+		return Orig(x0, data, w2, x3, w4);
     }
 };
 
@@ -306,13 +427,18 @@ extern "C" void exl_main(void* x0, void* x1) {
 		0x2BED0,
 		0x2C050
 	};
+	//REF: FD 7B BB A9 F9 0B 00 F9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 03 00 91 F7 03 01 AA 21 10 40 B8
+	std::array HIRC_offsets = {
+		0xB4139C,
+		0xB3CB00
+	};
 
 	for (size_t i = 0; i < offsets.size(); i++) {
 		uintptr_t pointer = exl::util::modules::GetTargetOffset(offsets[i]);
 		if (!memcmp(pattern, (void*)pointer, sizeof(pattern))) {
 			CreateFileStruct::InstallAtOffset(offsets[i]);
 			LoadWEMFile::InstallAtOffset(WEM_offsets[i]);
-
+			ParseHIRC::InstallAtOffset(HIRC_offsets[i]);
 			break;
 		}
 	}
