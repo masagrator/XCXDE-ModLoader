@@ -430,7 +430,7 @@ extern "C" void exl_main(void* x0, void* x1) {
 	};
 	//REF: FD 7B BB A9 F9 0B 00 F9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 03 00 91 F7 03 01 AA 21 10 40 B8
 	std::array HIRC_offsets = {
-		0xB4139C,
+		0xB4C900,
 		0xB3CB00
 	};
 
