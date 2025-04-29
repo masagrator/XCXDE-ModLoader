@@ -24,7 +24,7 @@ atmosphere/contents/0100453019AA8000/romfs/mod/monolib/shader/lib_nx.ini
 
 # How to modify sound files:
 First we need to unpack Music.pck. You can use this Python 3 script [HERE](https://github.com/masagrator/NXGameScripts/blob/main/XenobladeChroniclesX/pck_unpack_digits.py)<br>
-Download it to the same folder where you copied Music.cpk (you can find it in romfs/sound folder)<br>
+Download it to the same folder where you copied Music.pck (you can find it in romfs/sound folder)<br>
 Example of use in Command Prompt:
 ```
 python pck_unpack_digits.py Music.cpk
