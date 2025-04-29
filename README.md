@@ -27,7 +27,7 @@ First we need to unpack Music.pck. You can use this Python 3 script [HERE](https
 Download it to the same folder where you copied Music.pck (you can find it in romfs/sound folder)<br>
 Example of use in Command Prompt:
 ```
-python pck_unpack_digits.py Music.cpk
+python pck_unpack_digits.py Music.pck
 ```
 This will create new folder "Music" with BANKS and STREAMS folders. Look only for files in STREAMS folder.
 As we don't know what names are hidden under hashes used for .wem files, there is no easy way to determine which song is which. For discussion about this go here:<br>
