@@ -338,7 +338,7 @@ HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
 			return Orig(x0, data, w2, x3, w4);
 		initialized = true;
 		uint32_t HIRC_Magic = *(uint32_t*)(ptr + 0x20);
-		if (HIRC_Magic == 0x42534948)
+		if (HIRC_Magic != 0x43524948)
 			return Orig(x0, data, w2, x3, w4);
 		uint32_t entry_count = *(uint32_t*)(ptr + 0x28);
 		ptr += 0x28;
