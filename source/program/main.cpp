@@ -300,7 +300,7 @@ int getWemRiffLength(uint32_t hash30, double* duration, double* startLoop) {
 		return 1;
 	uint32_t magic = 0;
 	nn::codec::FDKfread(&magic, 4, 1, file);
-	if (magic != 0x46464952) {
+	if (magic != *(uint32_t*)&"RIFF") {
 		nn::codec::FDKfclose(file);
 		return 1;
 	}
@@ -316,7 +316,7 @@ int getWemRiffLength(uint32_t hash30, double* duration, double* startLoop) {
 	nn::codec::FDKfread(&time, 4, 1, file);
 	nn::codec::FDKfseek(file, 0x3C, 0);
 	nn::codec::FDKfread(&magic, 4, 1, file);
-	if (magic == 0x6173616D) {
+	if (magic == *(uint32_t*)&"masa") {
 		nn::codec::FDKfseek(file, 8, 1);
 		nn::codec::FDKfread(startLoop, 8, 1, file);
 	}
@@ -334,11 +334,11 @@ HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
 		uintptr_t ptr = (uintptr_t)data;
 		ptr &= ~0xFFFF;
 		uint32_t bank_hash = *(uint32_t*)(ptr + 0xC);
-		if (bank_hash != 0x1899AC8D)
+		if (bank_hash != *(uint32_t*)&"BKHD")
 			return Orig(x0, data, w2, x3, w4);
 		initialized = true;
 		uint32_t HIRC_Magic = *(uint32_t*)(ptr + 0x20);
-		if (HIRC_Magic != 0x43524948)
+		if (HIRC_Magic != *(uint32_t*)&"HIRC")
 			return Orig(x0, data, w2, x3, w4);
 		uint32_t entry_count = *(uint32_t*)(ptr + 0x28);
 		ptr += 0x28;
