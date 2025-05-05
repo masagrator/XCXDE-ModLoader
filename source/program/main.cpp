@@ -38,10 +38,9 @@ requires (std::is_arithmetic_v<T>)
 class BucketSortedArray {
 private:
 	std::make_signed_t<T>* m_start = 0;
-	size_t m_count = 0;
-	size_t m_negabits = 0;
+	size_t m_count = 0, m_negabits = 0;
 	std::make_unsigned_t<T>* m_hashes = 0;
-	bool valid = false;
+	bool m_valid = false;
 	
 	//We are using here functions provided by nnSDK that are wrappers around malloc() and free() to get access to game's heap.
 	//This is to avoid situations where some libraries are including malloc() and free() which results in using plugin's own heap.
@@ -62,9 +61,14 @@ public:
 		//Flatten out m_count since anything above amount of bits T represents won't be used anyway
 		if (bits_to_and > sizeof(T) * 8)
 			bits_to_and = sizeof(T) * 8;
+		if (bits_to_and > sizeof(m_count) * 8)
+			bits_to_and = sizeof(m_count) * 8;
 		m_count = 1 << bits_to_and;
 		m_start = (std::make_signed_t<T>*)Allocate(sizeof(std::make_signed_t<T>), m_count+1);
-		if (!m_start) return;
+		if (!m_start) {
+			Unallocate(m_hashes);
+			return;
+		}
 		memset(m_start, -1, sizeof(std::make_signed_t<T>) * (m_count+1));
 		m_negabits = (sizeof(T) * 8) - bits_to_and;
 		for (size_t i = 0; i < size; i++) {
@@ -79,13 +83,11 @@ public:
 			if (m_start[i] != -1) last_good_end = m_start[i];
 			else m_start[i] = last_good_end * -1;
 		}
-		valid = true;
+		m_valid = true;
 	}
 	~BucketSortedArray() {
-		if (m_start)
-			Unallocate(m_start);
-		if (m_hashes)
-			Unallocate(m_hashes);
+		if (m_start) Unallocate(m_start);
+		if (m_hashes) Unallocate(m_hashes);
 	}
 
 	const bool find(T hash) {
@@ -96,7 +98,7 @@ public:
 
 	//Use to check if constructed class was created properly since this class avoids using exceptions
 	const bool isValid() {
-		return valid;
+		return m_valid;
 	}
 };
 
