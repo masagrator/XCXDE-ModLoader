@@ -48,8 +48,11 @@ private:
 		return nnutilZlib_zcalloc(nullptr, size, nmemb);
 	}
 
-	constexpr void Unallocate(void* ptr) {
-		return nnutilZlib_zcfree(nullptr, ptr);
+	template <typename T1> constexpr void Unallocate(T1& ptr) {
+		if (ptr) {
+			nnutilZlib_zcfree(nullptr, ptr);
+			ptr = 0;
+		}
 	}
 public:
 	BucketSortedArray(T* hashes, const size_t size, uint8_t bits_to_and) {
@@ -86,8 +89,8 @@ public:
 		m_valid = true;
 	}
 	~BucketSortedArray() {
-		if (m_start) Unallocate(m_start);
-		if (m_hashes) Unallocate(m_hashes);
+		Unallocate(m_start);
+		Unallocate(m_hashes);
 	}
 
 	const bool find(T hash) {
