@@ -412,7 +412,7 @@ HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
 				uint32_t markerID = (*(uint32_t*)(ptr));
 				ptr += 4;
 				if (markerID == 43573010 && startLoop != -1.0) *(double*)(ptr) = startLoop;
-				else if (markerID == 1539036744 && srcDuration != 1.0) *(double*)(ptr) = srcDuration;
+				else if (markerID == 1539036744 && srcDuration != -1.0) *(double*)(ptr) = srcDuration;
 				ptr += 9;
 			}
 		}
