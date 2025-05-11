@@ -330,10 +330,23 @@ int getWemRiffLength(uint32_t hash30, double* duration, double* startLoop) {
 	return 0;
 }
 
+//This will be calculated in compile time
+constexpr uint32_t hash32(const char* str) {
+    uint32_t FNV1_INIT = 0x811C9DC5;
+    uint32_t FNV1_PRIME = 0x1000193;
+    for (size_t x = 0; x < strlen(str); x++) {
+        uint8_t byte = str[x];
+        if ((byte - 65) < 26)
+            byte += 32;
+        FNV1_INIT = (FNV1_PRIME * FNV1_INIT) ^ byte;
+    }
+    return FNV1_INIT;
+}
+
 HOOK_DEFINE_TRAMPOLINE(ParseHIRC) {
 
     static int Callback(void* x0, void* data, int section_size, int* bank_hash, int w4) {
-		if (*bank_hash != 0x1899AC8D) //bgm.bnk
+		if (*bank_hash != hash32("bgm"))
 			return Orig(x0, data, section_size, bank_hash, w4);
 		if (!music_bucket)
 			return Orig(x0, data, section_size, bank_hash, w4);
