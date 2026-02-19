@@ -2,7 +2,7 @@
 Exlaunch plugin that allows loading files outside of sts.ard/sts.arh.<br>
 Additionally allows loading BGM wem files outside of Music.pck without need to edit bgm.bnk to update loops.
 
-Only for Western release, version 1.0.1 and 1.0.2 (TID: `0100453019AA8000`)
+Only for Western release, version 1.0.1, 1.0.2 and 2.0.0 (TID: `0100453019AA8000`)
 
 # How to install:
 1. Download latest release
